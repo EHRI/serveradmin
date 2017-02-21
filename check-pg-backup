@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+
+#
+# Check PostgreSQL backups for the portal on S3 actually work...
+# 
+# This script:
+#  - creates a temporary database
+#  - downloads the binary backup file and loads it
+#  - does some test queries
+#  - removes the test database
+#
+import os, sys, random, re, string, tempfile
+import argparse
+import boto3
+from contextlib import contextmanager
+import logging
+import psycopg2
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT, ISOLATION_LEVEL_READ_COMMITTED
+import subprocess
+    
+
+PG_DEFAULT_DB = "postgres"
+
+logger = logging.getLogger(__name__)
+
+def load_db_from_file(db_name, db_user, file_name, host=None):
+    env = os.environ.copy()
+    if host is not None:
+        env["PGHOST"] = host
+    loadcmd = [
+            "pg_restore",
+            "--create",
+            "--clean",
+            "-n", "public",
+            "--username", db_user,
+            "--dbname", db_name,
+            "--no-owner",
+            "--role", db_user,
+            file_name
+    ]
+    subprocess.check_output(loadcmd, stderr=subprocess.STDOUT, env=env)
+
+
+@contextmanager
+def test_db(name, bucket, object, user, delete=True, host=None):
+    password = os.environ.get("PGPASSWORD")
+    with psycopg2.connect(user=user, host=host, password=password,
+            database=PG_DEFAULT_DB) as conn, conn.cursor() as cursor:
+        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        cursor = conn.cursor()
+        cursor.execute("CREATE DATABASE " + name)
+        logger.debug("Creating temp db: %s", name)
+
+    s3 = boto3.client("s3")
+    with tempfile.NamedTemporaryFile() as tmp:
+        s3.download_fileobj(bucket, object, tmp)
+        tmp.flush()
+        load_db_from_file(name, user, tmp.name, host)
+
+    conn = psycopg2.connect(user=user, host=host, password=password, database=name)
+    cursor = conn.cursor()
+    try:
+        yield cursor    
+    finally:
+        cursor.close()
+        conn.close()
+        with psycopg2.connect(user=user, host=host, password=password,
+                database=PG_DEFAULT_DB) as conn, conn.cursor() as cursor:
+            conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+            cursor = conn.cursor()
+            cursor.execute("DROP DATABASE " + name)
+            logger.debug("Dropped temp db: %s", name)
+
+
+def check_pg_dump(args):
+    """Check the postgresql backup"""
+
+    test_db_name = ''.join(random.choice(string.ascii_lowercase) for _ in range(10))
+
+    with test_db(test_db_name, args.bucket, args.object,
+            args.user, host = args.host) as cursor:
+
+        # now we can test some selects...
+        cursor.execute("SELECT count(id) FROM users")
+        users = cursor.fetchone()[0]
+        logger.debug("Fetched %d users", users)
+        assert users > 100, "Expect more than 100 users!"
+        
+        cursor.execute("SELECT count(original_path_sha1) FROM moved_pages")
+        pages = cursor.fetchone()[0]
+        logger.debug("Fetched %d moved pages", pages)
+        assert pages > 100, "Expect more than 100 moved pages!"
+        
+
+if __name__ == "__main__":
+    description = """Check EHRI PostgreSQL backups in S3.    
+                  If a password is required set via PGPASSWORD env var.
+                  """
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("bucket", help="The S3 backup bucket")
+    parser.add_argument("object", help="The S3 object for the PostgreSQL binary dump")
+    parser.add_argument("--debug", dest="debug", action="store_true", help="Show debug info")
+    parser.add_argument("--host", dest="host", default=None, help="PostgreSQL host")
+    parser.add_argument("--user", dest="user", default="postgres", help="PostgreSQL username")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.WARNING)
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+
+    check_pg_dump(args)    
