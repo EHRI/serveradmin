@@ -9,6 +9,10 @@
 #  - does some test queries
 #  - removes the test database
 #
+# Run with, e.g.
+#
+#    PGPASSWORD=changeme ./check-pg-backup --host=localhost --user=dbtester ehri-backup pg/pg-portal.dump
+#
 import os, sys, random, re, string, tempfile
 import argparse
 import boto3
@@ -47,7 +51,6 @@ def test_db(name, bucket, object, user, delete=True, host=None):
     with psycopg2.connect(user=user, host=host, password=password,
             database=PG_DEFAULT_DB) as conn, conn.cursor() as cursor:
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        cursor = conn.cursor()
         cursor.execute("CREATE DATABASE " + name)
         logger.debug("Creating temp db: %s", name)
 
@@ -67,7 +70,6 @@ def test_db(name, bucket, object, user, delete=True, host=None):
         with psycopg2.connect(user=user, host=host, password=password,
                 database=PG_DEFAULT_DB) as conn, conn.cursor() as cursor:
             conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-            cursor = conn.cursor()
             cursor.execute("DROP DATABASE " + name)
             logger.debug("Dropped temp db: %s", name)
 
