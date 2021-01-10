@@ -1,0 +1,23 @@
+#!/bin/bash
+
+#
+# Print out a list of user IDs present on one portal instance but not the other.
+# Note: if we're copying to staging this assumes everything on staging
+# is already on production.
+#
+
+set -e
+
+if [ -z "$PGHOST" ]; then
+  echo "Error: PGHOST not set in environment"
+  exit 1
+fi
+
+PROD=()
+mapfile -t PROD < <(psql --user docview docview -c "COPY (select id from users) TO STDOUT")
+
+STAGE=()
+mapfile -t STAGE < <(psql --user docview_stage docview_stage -c "COPY (select id from users) TO STDOUT")
+
+echo ${PROD[@]} ${STAGE[@]} | tr ' ' '\n' | sort | uniq -u
+

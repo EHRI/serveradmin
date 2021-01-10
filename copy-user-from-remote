@@ -1,0 +1,34 @@
+#!/bin/bash
+
+#
+# Copies a user account from the production system
+# to the staging environment.
+#
+
+set -e
+
+if [ -z "$PGHOST" ]; then
+  echo "Error: PGHOST not set in environment"
+  exit 1
+fi
+
+if [ -z "$NEO4JHOST" ]; then
+  echo "Error: NEO4JHOST not set in environment"
+  exit 1
+fi
+
+USER=$1
+if [ ! -f "$USER" ]; then
+    echo "Arg should be a user ID!"
+    exit 1
+fi
+
+EHRI_URL=http://localhost:7474/ehri/classes/UserProfile
+
+psql --user docview docview -c "\copy (SELECT * from users where id = '$USER') TO STDOUT" | \
+    psql --user docview_stage docview_stage -c "\copy users from stdin"
+
+ssh "$NEO4JHOST" "curl -s $EHRI_URL/$USER" | \
+    curl -s -H X-User:admin -H Content-Type:application/json --data-binary @- $EHRI_URL
+
+java -jar /opt/webapps/docview/bin/indexer.jar --index @"$USER"
