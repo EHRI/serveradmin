@@ -18,17 +18,21 @@ if [ -z "$NEO4JHOST" ]; then
 fi
 
 USER=$1
-if [ ! -f "$USER" ]; then
+if [ -z "$USER" ]; then
     echo "Arg should be a user ID!"
     exit 1
 fi
 
-EHRI_URL=http://localhost:7474/ehri/classes/UserProfile
+EHRI_BASE=http://localhost:7474/ehri
+EHRI_URL=$EHRI_BASE/classes/UserProfile
 
-psql --user docview docview -c "\copy (SELECT * from users where id = '$USER') TO STDOUT" | \
+CURL_CMD="curl --netrc-file $HOME/.neo4j-netrc --silent --header X-User:admin --header Content-type:application/json"
+
+psql --user docview_stage docview -c "\copy (SELECT * from users where id = '$1') TO STDOUT" | \
     psql --user docview_stage docview_stage -c "\copy users from stdin"
 
-ssh "$NEO4JHOST" "curl -s $EHRI_URL/$USER" | \
-    curl -s -H X-User:admin -H Content-Type:application/json --data-binary @- $EHRI_URL
+ssh "$NEO4JHOST" "curl -s $EHRI_URL/$USER" | $CURL_CMD --data-binary @- $EHRI_URL 
 
-java -jar /opt/webapps/docview/bin/indexer.jar --index @"$USER"
+$CURL_CMD "$EHRI_BASE/entities?id=$USER" | java -jar /opt/webapps/docview/bin/indexer.jar --index  --file -
+
+echo "Copied user $USER to from prod"
