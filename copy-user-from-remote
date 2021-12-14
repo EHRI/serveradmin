@@ -31,7 +31,9 @@ CURL_CMD="curl --netrc-file $HOME/.neo4j-netrc --silent --header X-User:admin --
 psql --user docview_stage docview -c "\copy (SELECT * from users where id = '$1') TO STDOUT" | \
     psql --user docview_stage docview_stage -c "\copy users from stdin"
 
-ssh "$NEO4JHOST" "curl -s $EHRI_URL/$USER" | $CURL_CMD --data-binary @- $EHRI_URL 
+ssh "$NEO4JHOST" "curl -s $EHRI_URL/$USER" | $CURL_CMD --data-binary @- "$EHRI_URL?group=portal"
+
+$CURL_CMD --data-binary '["owner"]' "$EHRI_BASE/permissions/$USER/item/$USER"
 
 $CURL_CMD "$EHRI_BASE/entities?id=$USER" | java -jar /opt/webapps/docview/bin/indexer.jar --index  --file -
 
