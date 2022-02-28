@@ -14,7 +14,7 @@ if [ -z "$PGHOST" ]; then
 fi
 
 PROD=()
-mapfile -t PROD < <(psql --user docview docview -c "COPY (select id from users) TO STDOUT")
+mapfile -t PROD < <(psql --user docview_stage docview -c "COPY (select id from users) TO STDOUT")
 
 STAGE=()
 mapfile -t STAGE < <(psql --user docview_stage docview_stage -c "COPY (select id from users) TO STDOUT")
