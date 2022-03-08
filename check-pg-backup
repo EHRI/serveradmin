@@ -33,8 +33,8 @@ def load_db_from_file(db_name, db_user, file_name, host=None):
         env["PGHOST"] = host
     loadcmd = [
             "pg_restore",
-            "--create",
             "--clean",
+            "--if-exists",
             "-n", "public",
             "--username", db_user,
             "--dbname", db_name,
@@ -51,7 +51,7 @@ def test_db(name, bucket, object, user, delete=True, host=None):
     with psycopg2.connect(user=user, host=host, password=password,
             database=PG_DEFAULT_DB) as conn, conn.cursor() as cursor:
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        cursor.execute("CREATE DATABASE " + name)
+        cursor.execute(f"CREATE DATABASE {name} WITH TEMPLATE template0")
         logger.debug("Creating temp db: %s", name)
 
     s3 = boto3.client("s3")
@@ -70,7 +70,7 @@ def test_db(name, bucket, object, user, delete=True, host=None):
         with psycopg2.connect(user=user, host=host, password=password,
                 database=PG_DEFAULT_DB) as conn, conn.cursor() as cursor:
             conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-            cursor.execute("DROP DATABASE " + name)
+            cursor.execute(f"DROP DATABASE {name}")
             logger.debug("Dropped temp db: %s", name)
 
 
