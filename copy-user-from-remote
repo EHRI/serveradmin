@@ -12,8 +12,13 @@ if [ -z "$PGHOST" ]; then
   exit 1
 fi
 
-if [ -z "$NEO4JHOST" ]; then
-  echo "Error: NEO4JHOST not set in environment"
+if [ -z "$SRCNEO4JHOST" ]; then
+  echo "Error: SRCNEO4JHOST not set in environment"
+  exit 1
+fi
+
+if [ -z "$DSTNEO4JHOST" ]; then
+  echo "Error: DSTNEO4JHOST not set in environment"
   exit 1
 fi
 
@@ -23,18 +28,22 @@ if [ -z "$USER" ]; then
     exit 1
 fi
 
-EHRI_BASE=http://localhost:7474/ehri
-EHRI_URL=$EHRI_BASE/classes/UserProfile
+NEO4JUSER=neo4j
+SRC_BASE=http://$SRCNEO4JHOST:7474/ehri
+SRC_URL=$SRC_BASE/classes/UserProfile
+
+DST_BASE=http://$DSTNEO4JHOST:7474/ehri
+DST_URL=$DST_BASE/classes/UserProfile
 
 CURL_CMD="curl --netrc-file $HOME/.neo4j-netrc --silent --header X-User:admin --header Content-type:application/json"
 
 psql --user docview_stage docview -c "\copy (SELECT * from users where id = '$1') TO STDOUT" | \
     psql --user docview_stage docview_stage -c "\copy users from stdin"
 
-ssh "$NEO4JHOST" "curl -s $EHRI_URL/$USER" | $CURL_CMD --data-binary @- "$EHRI_URL?group=portal"
+$CURL_CMD $SRC_URL/$USER | $CURL_CMD --data-binary @- "$DST_URL?group=portal"
 
-$CURL_CMD --data-binary '["owner"]' "$EHRI_BASE/permissions/$USER/item/$USER"
+$CURL_CMD --data-binary '["owner"]' "$DST_BASE/permissions/$USER/item/$USER"
 
-$CURL_CMD "$EHRI_BASE/entities?id=$USER" | java -jar /opt/webapps/docview/bin/indexer.jar --index  --file -
+$CURL_CMD "$DST_BASE/entities?id=$USER" | java -jar /opt/docview/bin/indexer.jar --index --rest $DST_BASE -U $NEO4JUSER -p $NEO4JPASS --file -
 
 echo "Copied user $USER to from prod"
