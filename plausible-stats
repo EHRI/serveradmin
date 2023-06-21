@@ -3,7 +3,7 @@
 """
 Load site data from Plausible Analytics API and print to stdout.
 
-Input is a JSON dictionary of site names and domains, e.g.: {"project": "ehri-project.eu"}
+Input is a TSV file containing the name of the site and its Plausible domain
 """
 
 import datetime
@@ -11,19 +11,23 @@ import json
 import os
 import sys
 from collections import OrderedDict
+import csv
 
 import requests
 
 try:
-    PLAUSIBLE_KEY = os.environ.get('PLAUSIBLE_KEY')
+    PLAUSIBLE_KEY = os.environ['PLAUSIBLE_KEY']
 except KeyError:
     print("Please set PLAUSIBLE_KEY environment variable")
     sys.exit(1)
 
 FIELDS = ["visitors", "visits", "pageviews", "views_per_visit", "bounce_rate", "visit_duration"]
 START = '2023-06-01'
-SITES = json.load(sys.stdin)
 
+# Load SITES from TSV file passed via stdin
+SITES = OrderedDict()
+for row in csv.reader(sys.stdin, delimiter="\t"):
+    SITES[row[0]] = row[1]
 
 def main():
     """Load all site data"""
