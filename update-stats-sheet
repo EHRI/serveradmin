@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+
+"""
+Update the analytics stats spreadsheet from data passed via stdin.
+"""
+
+import argparse
+import json
+import sys
+
+import gspread
+from gspread import WorksheetNotFound
+from gspread.utils import ValueInputOption
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Update the analytics stats spreadsheet from data passed via stdin.')
+    parser.add_argument('--id', required=True, help='The ID of the spreadsheet to update')
+    parser.add_argument('--credentials', required=True, help='The path to the Google service account credentials JSON file')
+    args = parser.parse_args()
+
+    gc = gspread.service_account(filename=args.credentials, scopes=['https://www.googleapis.com/auth/spreadsheets'])
+    sheet = gc.open_by_key(args.id)
+    data = json.load(sys.stdin)
+
+    for i, name in enumerate(data):
+        site_data = data[name]
+        num_cols = max([len(r) for r in site_data])
+        num_rows = len(site_data)
+
+        try:
+            wks = sheet.worksheet(name)
+        except WorksheetNotFound:
+            wks = sheet.add_worksheet(name, cols=num_cols, rows=num_rows, index=i + 2)
+        wks.freeze(1)
+        wks.format('1:1', {
+            'textFormat': {
+                'bold': True
+            }
+        })
+        wks.update('A1', data[name], value_input_option=ValueInputOption.user_entered)
+
+
+if __name__ == "__main__":
+    main()

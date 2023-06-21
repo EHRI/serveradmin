@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+
+"""
+Load site data from Plausible Analytics API and print to stdout.
+
+Input is a JSON dictionary of site names and domains, e.g.: {"project": "ehri-project.eu"}
+"""
+
+import datetime
+import json
+import os
+import sys
+from collections import OrderedDict
+
+import requests
+
+try:
+    PLAUSIBLE_KEY = os.environ.get('PLAUSIBLE_KEY')
+except KeyError:
+    print("Please set PLAUSIBLE_KEY environment variable")
+    sys.exit(1)
+
+FIELDS = ["visitors", "visits", "pageviews", "views_per_visit", "bounce_rate", "visit_duration"]
+START = '2023-06-01'
+SITES = json.load(sys.stdin)
+
+
+def main():
+    """Load all site data"""
+    session = requests.session()
+    session.headers = {'Authorization': "Bearer " + PLAUSIBLE_KEY}
+
+    data = OrderedDict()
+    for name, domain in SITES.items():
+        r = session.get('https://plausible.io/api/v1/stats/timeseries', params=dict(
+            site_id=domain,
+            period='custom',
+            metrics=','.join(FIELDS),
+            date=START + "," + datetime.date.today().isoformat()
+        ))
+        data[name] = [["date"] + FIELDS]
+        data[name].extend([[i["date"]] + [i[field] for field in FIELDS] for i in r.json()['results']])
+
+    json.dump(data, fp=sys.stdout, indent=2)
+
+
+if __name__ == "__main__":
+    main()
