@@ -5,7 +5,7 @@ Load site data from Plausible Analytics API and print to stdout.
 
 Input is a TSV file containing the name of the site and its Plausible domain
 """
-
+import argparse
 import datetime
 import json
 import os
@@ -24,23 +24,63 @@ except KeyError:
 FIELDS = ["visitors", "visits", "pageviews", "views_per_visit", "bounce_rate", "visit_duration"]
 START = '2023-06-01'
 
-# Load SITES from TSV file passed via stdin
-SITES = OrderedDict()
-for row in csv.reader(sys.stdin, delimiter="\t"):
-    SITES[row[0]] = row[1]
 
-def main():
+def geo(args, sites: OrderedDict):
+    """Load geo data"""
+    session = requests.session()
+    session.headers = {'Authorization': "Bearer " + PLAUSIBLE_KEY}
+
+    data = OrderedDict()
+    for short_name, domain in sites.items():
+        name = f"{short_name} Geo"
+        # parse the month of the given start date:
+        start = datetime.datetime.strptime(args.start, "%Y-%m-01")
+        # get a list of months from start to the current date:
+        months = [start + datetime.timedelta(days=31 * i) for i in range(0, (datetime.date.today().year - start.year) * 12 + datetime.date.today().month - start.month + 1)]
+        # get the data for each month:
+        data[name] = OrderedDict()
+
+        first_of_months = [m.strftime("%Y-%m-01") for m in months]
+        country_data = OrderedDict()
+
+        # in order the get all available countries we need to collect all the
+        for i, fom in enumerate(first_of_months):
+            r = session.get('https://plausible.io/api/v1/stats/breakdown', params=dict(
+                site_id=domain,
+                period='month',
+                property='visit:country',
+                date=fom
+            ))
+            results = r.json()['results']
+
+            for result in results:
+                country_code = result['country']
+                visitors = result['visitors']
+                if country_code not in country_data:
+                    country_data[country_code] = {fom: visitors}
+                else:
+                    country_data[country_code][fom] = visitors
+
+        # reformat the results:
+        data[name] = [["country"] + [m.strftime("%Y-%m") for m in months]]
+        for country_code, visitors in country_data.items():
+            data[name].append([country_code] + [visitors.get(fom, 0) for fom in first_of_months])
+
+    json.dump(data, fp=sys.stdout, indent=2)
+
+
+def visits(args, sites: OrderedDict):
     """Load all site data"""
     session = requests.session()
     session.headers = {'Authorization': "Bearer " + PLAUSIBLE_KEY}
 
     data = OrderedDict()
-    for name, domain in SITES.items():
+    for name, domain in sites.items():
         r = session.get('https://plausible.io/api/v1/stats/timeseries', params=dict(
             site_id=domain,
             period='custom',
             metrics=','.join(FIELDS),
-            date=START + "," + datetime.date.today().isoformat()
+            date=args.start + "," + datetime.date.today().isoformat()
         ))
         data[name] = [["date"] + FIELDS]
         data[name].extend([[i["date"]] + [i[field] for field in FIELDS] for i in r.json()['results']])
@@ -49,4 +89,18 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Parse arguments
+    parser = argparse.ArgumentParser(description='Load site data from Plausible Analytics API and print to stdout.')
+    parser.add_argument('-g', '--geo', action='store_true', help="Extract geospatial data for months to date")
+    parser.add_argument('-s', '--start', default=START, help="Start date for data as YYYY-MM-DD")
+    args = parser.parse_args()
+
+    # Load SITES from TSV file passed via stdin
+    sites = OrderedDict()
+    for row in csv.reader(sys.stdin, delimiter="\t"):
+        sites[row[0]] = row[1]
+
+    if args.geo:
+        geo(args, sites)
+    else:
+        visits(args, sites)

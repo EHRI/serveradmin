@@ -13,14 +13,12 @@ from gspread import WorksheetNotFound
 from gspread.utils import ValueInputOption
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Update the analytics stats spreadsheet from data passed via stdin.')
-    parser.add_argument('--id', required=True, help='The ID of the spreadsheet to update')
-    parser.add_argument('--credentials', required=True, help='The path to the Google service account credentials JSON file')
-    args = parser.parse_args()
+def import_stats(args):
+    """Import the stats data from the given JSON file"""
 
     gc = gspread.service_account(filename=args.credentials, scopes=['https://www.googleapis.com/auth/spreadsheets'])
     sheet = gc.open_by_key(args.id)
+
     data = json.load(sys.stdin)
 
     for i, name in enumerate(data):
@@ -38,8 +36,17 @@ def main():
                 'bold': True
             }
         })
+        if num_cols > wks.col_count:
+            wks.add_cols(num_cols - wks.col_count)
         wks.update('A1', data[name], value_input_option=ValueInputOption.user_entered)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description='Update the analytics stats spreadsheet from data passed via stdin.')
+    parser.add_argument('--id', required=True, help='The ID of the spreadsheet to update')
+    parser.add_argument('--credentials', required=True, help='The path to the Google service account credentials JSON file')
+    args = parser.parse_args()
+
+    import_stats(args)
+
+
