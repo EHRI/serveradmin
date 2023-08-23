@@ -13,6 +13,24 @@ from gspread import WorksheetNotFound
 from gspread.utils import ValueInputOption
 
 
+def create_sheet(args):
+    """Create the spreadsheet"""
+
+    gc = gspread.service_account(filename=args.credentials, scopes=['https://www.googleapis.com/auth/spreadsheets',
+                                                                    'https://www.googleapis.com/auth/drive'])
+    sheet = gc.create(args.create)
+    sheet.share(args.share_with, perm_type='user', role='writer')
+    print(sheet.id)
+
+
+def delete_sheet(args):
+    """Delete the spreadsheet"""
+
+    gc = gspread.service_account(filename=args.credentials, scopes=['https://www.googleapis.com/auth/spreadsheets',
+                                                                    'https://www.googleapis.com/auth/drive'])
+    gc.del_spreadsheet(args.id)
+
+
 def import_stats(args):
     """Import the stats data from the given JSON file"""
 
@@ -43,10 +61,23 @@ def import_stats(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Update the analytics stats spreadsheet from data passed via stdin.')
-    parser.add_argument('--id', required=True, help='The ID of the spreadsheet to update')
-    parser.add_argument('--credentials', required=True, help='The path to the Google service account credentials JSON file')
+    parser.add_argument('--id', help='The ID of the spreadsheet to update')
+    parser.add_argument('--credentials', required=True,
+                        help='The path to the Google service account credentials JSON file')
+    parser.add_argument('--create', help='Create a new spreadsheet with the given name')
+    parser.add_argument('--share-with', help='Share the created spreadsheet with the given email address')
+    parser.add_argument('--delete', action='store_true', help='Delete the given spreadsheet')
     args = parser.parse_args()
 
-    import_stats(args)
-
-
+    if args.create:
+        if not args.share_with:
+            parser.error("Must specify --share-with address when creating a new spreadsheet")
+        create_sheet(args)
+    elif args.delete:
+        if not args.id:
+            parser.error("Must specify --id when deleting a spreadsheet")
+        delete_sheet(args)
+    else:
+        if not args.id:
+            parser.error("Must specify either --id or --create")
+        import_stats(args)
