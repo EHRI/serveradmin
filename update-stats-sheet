@@ -29,7 +29,7 @@ def import_stats(args):
         try:
             wks = sheet.worksheet(name)
         except WorksheetNotFound:
-            wks = sheet.add_worksheet(name, cols=num_cols, rows=num_rows, index=i + 2)
+            wks = sheet.add_worksheet(name, cols=max(num_cols, 50), rows=max(num_rows, 1000), index=i + 2)
         wks.freeze(1)
         wks.format('1:1', {
             'textFormat': {
