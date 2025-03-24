@@ -105,6 +105,7 @@ def totals(args, sites: OrderedDict):
 
     data = OrderedDict()
 
+    metrics = ["visitors", "pageviews"]
     filters = ["contains", "event:page", args.page] if args.page else []
 
     date_ranges = [(year, [start_date.replace(year=year).strftime('%Y-%m-%d'),
@@ -121,7 +122,7 @@ def totals(args, sites: OrderedDict):
                 site_id=domain,
                 # period='custom',
                 filters=[filters],
-                metrics=["visitors", "pageviews"],
+                metrics=metrics,
                 date_range=ranges,
                 include=dict(imports=True)
             )
@@ -131,13 +132,17 @@ def totals(args, sites: OrderedDict):
             # print(r.status_code, file=sys.stderr)
             if name not in data:
                 data[name] = []
-            # print(r.json())
-            data[name].append([period, r.json()['results'][0]['metrics'][0], r.json()['results'][0]['metrics'][1]])
+            apidata = r.json()
+            if 'error' in apidata:
+                print("Error from Plausible API: " + apidata['error'], file=sys.stderr)
+                sys.exit(2)
+            results = r.json()['results'][0]['metrics'][0:len(metrics)]
+            data[name].append([period] + results)
 
     if args.format == "csv":
         import csv
         writer = csv.writer(sys.stdout)
-        writer.writerow(['site', 'year', 'visitors', 'pageviews'])
+        writer.writerow(['site', 'month' if args.months else 'year'] + metrics)
         for site, metrics in data.items():
             for row in metrics:
                 writer.writerow([site] + row)
