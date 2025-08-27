@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
+import argparse
+import logging
 #
 # Check PostgreSQL backups for the portal on S3 actually work...
-# 
+#
 # This script:
 #  - creates a temporary database
 #  - downloads the binary backup file and loads it
@@ -13,15 +15,17 @@
 #
 #    PGPASSWORD=changeme ./check-pg-backup --host=localhost --user=dbtester ehri-backup pg/pg-portal.dump
 #
-import os, sys, random, re, string, tempfile
-import argparse
-import boto3
-from contextlib import contextmanager
-import logging
-import psycopg2
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT, ISOLATION_LEVEL_READ_COMMITTED
+import os
+import random
+import string
 import subprocess
-    
+import tempfile
+from contextlib import contextmanager, closing
+
+import boto3
+import psycopg2
+from psycopg2 import sql
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 PG_DEFAULT_DB = "postgres"
 
@@ -48,11 +52,13 @@ def load_db_from_file(db_name, db_user, file_name, host=None):
 @contextmanager
 def test_db(name, bucket, object, user, delete=True, host=None):
     password = os.environ.get("PGPASSWORD")
-    with psycopg2.connect(user=user, host=host, password=password,
-            database=PG_DEFAULT_DB) as conn, conn.cursor() as cursor:
+    with closing(psycopg2.connect(user=user, host=host, password=password,
+            database=PG_DEFAULT_DB)) as conn:
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        cursor.execute(f"CREATE DATABASE {name} WITH TEMPLATE template0")
-        logger.debug("Creating temp db: %s", name)
+        conn.autocommit = True
+        with conn.cursor() as cursor:
+            cursor.execute(sql.SQL('CREATE DATABASE {} WITH TEMPLATE template0').format(sql.Identifier(name)))
+            logger.debug("Creating temp db: %s", name)
 
     s3 = boto3.client("s3")
     with tempfile.NamedTemporaryFile() as tmp:
@@ -67,11 +73,13 @@ def test_db(name, bucket, object, user, delete=True, host=None):
     finally:
         cursor.close()
         conn.close()
-        with psycopg2.connect(user=user, host=host, password=password,
-                database=PG_DEFAULT_DB) as conn, conn.cursor() as cursor:
+        with closing(psycopg2.connect(user=user, host=host, password=password,
+                database=PG_DEFAULT_DB)) as conn:
             conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-            cursor.execute(f"DROP DATABASE {name}")
-            logger.debug("Dropped temp db: %s", name)
+            conn.autocommit = True
+            with conn.cursor() as cursor:
+                cursor.execute(sql.SQL('DROP DATABASE {}').format(sql.Identifier(name)))
+                logger.debug("Dropped temp db: %s", name)
 
 
 def check_pg_dump(args):
