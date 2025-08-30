@@ -56,7 +56,7 @@ def import_stats(args):
         })
         if num_cols > wks.col_count:
             wks.add_cols(num_cols - wks.col_count)
-        wks.update('A1', data[name], value_input_option=ValueInputOption.user_entered)
+        wks.update(range_name='A1', values=data[name], value_input_option=ValueInputOption.user_entered)
 
 
 if __name__ == "__main__":
